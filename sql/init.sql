@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS watchlist_item (
   watchlist_id uuid,
   symbol text NOT NULL,
   exchange text,
-  instrument_token bigint,
+  instrument_token text,
   added_at timestamptz DEFAULT now(),
   UNIQUE (watchlist_id, symbol)
 );

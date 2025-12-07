@@ -3,72 +3,115 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Angel One Watchlist</title>
+    <title>StockTrackerUJ</title>
+    <!-- Premium Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>My Watchlist</h1>
-            <div class="add-stock-form">
-                <input type="text" id="symbolInput" placeholder="Enter Symbol (e.g. RELIANCE)" autocomplete="off">
-                <button id="addBtn">Add Stock</button>
-                <button id="dashboardBtn" class="info">Matrix Dashboard</button>
-            </div>
-            <div id="message" class="message"></div>
-        </header>
-
-        <main>
-            <div id="watchlistSection" class="watchlist-section">
-                <h2>Stocks</h2>
-                <table id="watchlistTable">
-                    <thead>
-                        <tr>
-                            <th>Symbol</th>
-                            <th>Exchange</th>
-                            <th>Added At</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <!-- Rows will be added here -->
-                    </tbody>
-                </table>
-            </div>
-
-            <div id="matrixSection" class="history-section hidden" style="max-width: 100%; overflow-x: auto;">
-                <div class="history-header">
-                    <h2>Price Matrix (Last 30 Days)</h2>
-                    <button id="closeMatrixBtn">Close</button>
+    <div class="app-container">
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="top-bar">
+                <div class="logo">
+                    <i class="fa-solid fa-chart-line"></i>
+                    <span>StockTrackerUJ</span>
                 </div>
-                <table id="matrixTable">
-                    <thead>
-                        <!-- Dynamic Headers -->
-                    </thead>
-                    <tbody>
-                        <!-- Matrix Rows -->
-                    </tbody>
-                </table>
-            </div>
-
-            <div id="historySection" class="history-section hidden">
-                <div class="history-header">
-                    <h2 id="historyTitle">History</h2>
-                    <button id="closeHistoryBtn">Close</button>
+                <div class="search-container">
+                    <div class="search-input-wrapper">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" id="symbolInput" placeholder="Search & Add Stock..." autocomplete="off">
+                        <div id="searchResults" class="search-dropdown hidden"></div>
+                    </div>
                 </div>
-                <table id="historyTable">
+                <!-- Status Indicator -->
+                <div class="status-container" style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; font-weight: 500;">
+                    <span id="statusDot" style="width: 8px; height: 8px; border-radius: 50%; background-color: var(--text-muted); display: inline-block;"></span>
+                    <span id="statusText" style="color: var(--text-muted);">Connecting...</span>
+                    <button id="reconnectBtn" class="btn hidden" style="font-size: 0.75rem; padding: 0.3rem 0.6rem; margin-left: 0.5rem; background: var(--bg-hover); color: var(--text-main); border: 1px solid var(--border);">
+                        <i class="fa-solid fa-plug"></i> Connect
+                    </button>
+                </div>
+                <div class="actions">
+                    <button id="refreshBtn" class="btn-icon" title="Refresh Data"><i class="fa-solid fa-rotate-right"></i></button>
+                </div>
+            </header>
+
+            <div class="dashboard_content">
+                <div class="section-header">
+                    <h1>LTP Matrix</h1>
+                    <p class="subtitle">Live tracking of your watchlist against historical close prices.</p>
+                </div>
+
+                <!-- Toolbar: Filters -->
+                <div class="toolbar" style="margin-bottom: 1rem; display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;">
+                        <div class="search-input-wrapper" style="width: auto; min-width: 200px;">
+                            <i class="fa-solid fa-filter"></i>
+                            <input type="number" id="minPriceInput" placeholder="Min LTP (>=)" autocomplete="off">
+                        </div>
+                        <div style="display: flex; align-items: center; color: var(--text-muted); font-size: 0.9rem;">
+                            <i class="fa-solid fa-info-circle" style="margin-right: 0.5rem;"></i>
+                            <span>Click headers to sort</span>
+                        </div>
+                    </div>
+                    
+                    <button id="exportBtn" class="btn" style="background: var(--bg-hover); color: var(--text-main); border: 1px solid var(--border); display: flex; align-items: center; gap: 0.5rem;">
+                        <i class="fa-solid fa-file-csv"></i> Export CSV
+                    </button>
+                </div>
+
+                <div class="card matrix-card">
+                    <div class="table-responsive">
+                        <table id="matrixTable">
+                            <thead>
+                                <tr id="matrixHeaderRow">
+                                    <th>Symbol</th>
+                                    <!-- Dynamic Dates -->
+                                </tr>
+                            </thead>
+                            <tbody id="matrixBody">
+                                <!-- Dynamic Rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- History Modal -->
+    <div id="historyModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">Stock History</h2>
+                <button class="close-btn" id="closeModal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="chart-container" style="position: relative; height: 250px; width: 100%; margin-bottom: 1.5rem;">
+                    <canvas id="stockChart"></canvas>
+                </div>
+                <table class="history-table">
                     <thead>
                         <tr>
                             <th>Date</th>
                             <th>LTP</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        <!-- History rows -->
-                    </tbody>
+                    <tbody id="historyBody"></tbody>
                 </table>
             </div>
-        </main>
+            <div class="modal-footer">
+                <button class="btn btn-danger" id="deleteStockBtn">Remove from Watchlist</button>
+            </div>
+        </div>
     </div>
 
     <script src="app.js"></script>

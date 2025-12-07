@@ -1,0 +1,13 @@
+name: Keep Alive Ping
+
+on:
+  schedule:
+    # Run every 14 minutes to prevent Render Free Tier from sleeping (sleeps after 15m inactivity)
+    - cron: '*/14 * * * *'
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Health Endpoint
+        run: curl -f -I ${{ secrets.RENDER_APP_URL }}/health

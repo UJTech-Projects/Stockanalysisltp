@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db');
 const router = express.Router();
 const subManager = require('../ws/manager');
+const { getCandleData, generateSessionOrToken } = require('../clients/angelClient');
 
 // Search for stocks by symbol or name
 router.get('/search', async (req, res) => {
@@ -45,26 +46,26 @@ router.post('/add', async (req, res) => {
 
     // If token is missing, try to look it up in instrument_master
     if (!finalToken) {
-        const lookup = await db.query(
-            `SELECT token, symbol, exch_seg, name FROM instrument_master 
+      const lookup = await db.query(
+        `SELECT token, symbol, exch_seg, name FROM instrument_master 
              WHERE symbol=$1 OR name=$1 
              ORDER BY 
                CASE WHEN exch_seg = 'NSE' THEN 1 ELSE 2 END,
                CASE WHEN symbol LIKE '%-EQ' THEN 1 ELSE 2 END,
                exch_seg
              LIMIT 1`,
-            [symbol]
-        );
-        
-        if (lookup.rows.length > 0) {
-            finalToken = lookup.rows[0].token;
-            finalExchange = lookup.rows[0].exch_seg;
-            finalSymbol = lookup.rows[0].symbol; // Use the official trading symbol
-            tokenFound = true;
-        } else {
-            // Token not found - we can still add to watchlist, but warn the user
-            console.warn(`No instrument found for symbol: ${symbol} - adding to watchlist without token`);
-        }
+        [symbol]
+      );
+
+      if (lookup.rows.length > 0) {
+        finalToken = lookup.rows[0].token;
+        finalExchange = lookup.rows[0].exch_seg;
+        finalSymbol = lookup.rows[0].symbol; // Use the official trading symbol
+        tokenFound = true;
+      } else {
+        // Token not found - we can still add to watchlist, but warn the user
+        console.warn(`No instrument found for symbol: ${symbol} - adding to watchlist without token`);
+      }
     }
 
     // ensure default watchlist exists
@@ -77,7 +78,7 @@ router.post('/add', async (req, res) => {
       `INSERT INTO watchlist_item(watchlist_id, symbol, exchange, instrument_token) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING`,
       [watchlistId, finalSymbol, finalExchange || null, finalToken || null]
     );
-    
+
     // Only attempt to subscribe if we have a valid token AND there's an active WebSocket
     if (finalToken && tokenFound) {
       try {
@@ -88,6 +89,53 @@ router.post('/add', async (req, res) => {
     } else if (!finalToken) {
       console.warn(`Skipping subscription for ${symbol} - no instrument token found`);
     }
+
+    // --- On-Demand Backfill (Last 10 Days) ---
+    if (finalToken && tokenFound) {
+      (async () => {
+        try {
+          console.log(`Backfilling 10-day history for ${finalSymbol}...`);
+          // Ensure valid session (rare race condition if token expired, but worth trying)
+          try { await generateSessionOrToken(); } catch (e) { }
+
+          const toDate = new Date();
+          const fromDate = new Date(toDate.getTime() - (10 * 24 * 60 * 60 * 1000));
+
+          // Helper to format date for Angel: YYYY-MM-DD HH:MM
+          const fmt = (d) => {
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd} 09:00`;
+          };
+
+          const data = await getCandleData({
+            symbolToken: finalToken,
+            exchange: finalExchange || 'NSE',
+            interval: 'ONE_DAY',
+            fromdate: fmt(fromDate),
+            todate: fmt(toDate)
+          });
+
+          if (data.status && data.data) {
+            for (const candle of data.data) {
+              // candle: [timestamp_str, open, high, low, close, vol]
+              const dateStr = candle[0].split('T')[0];
+              const closePrice = candle[4];
+              await db.query(`
+                            INSERT INTO ltp_history(symbol, exchange, date, ltp, fetched_at)
+                            VALUES($1, $2, $3, $4, now())
+                            ON CONFLICT (symbol, date) DO UPDATE SET ltp = EXCLUDED.ltp
+                        `, [finalSymbol, finalExchange, dateStr, closePrice]);
+            }
+            console.log(`Backfilled ${data.data.length} days for ${finalSymbol}`);
+          }
+        } catch (err) {
+          console.error(`Backfill failed for ${finalSymbol}:`, err.message);
+        }
+      })();
+    }
+    // -----------------------------------------
 
     // Return response with warning if token wasn't found
     const response = { ok: true, symbol: finalSymbol, token: finalToken, exchange: finalExchange };
@@ -154,18 +202,18 @@ router.get('/matrix', async (req, res) => {
     // Structure: { "TCS-EQ": { "2023-10-01": 3500, "2023-10-02": 3520 } }
     const priceMap = {};
     dataRes.rows.forEach(r => {
-        const d = r.date.toISOString().split('T')[0];
-        if (!priceMap[r.symbol]) priceMap[r.symbol] = {};
-        priceMap[r.symbol][d] = r.ltp;
+      const d = r.date.toISOString().split('T')[0];
+      if (!priceMap[r.symbol]) priceMap[r.symbol] = {};
+      priceMap[r.symbol][d] = r.ltp;
     });
 
     // 5. Build final array for frontend
     const matrix = stocks.map(sym => {
-        const row = { symbol: sym };
-        dates.forEach(d => {
-            row[d] = priceMap[sym]?.[d] || '-';
-        });
-        return row;
+      const row = { symbol: sym };
+      dates.forEach(d => {
+        row[d] = priceMap[sym]?.[d] || '-';
+      });
+      return row;
     });
 
     res.json({ dates, matrix });

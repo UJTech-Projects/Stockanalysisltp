@@ -1,8 +1,10 @@
 const db = require('../db');
-const WebSocketManager = require('./wsClient');
+// const WebSocketManager = require('./wsClient'); // Deprecated due to instability
+const PollingClient = require('./pollingClient');
+const logger = require('../logger');
 require('dotenv').config();
 
-// Singleton wrapper around WebSocketManager. Handles lazy start and re-subscribe from DB.
+// Singleton wrapper around PollingClient (formerly WebSocketManager). Handles lazy start and re-subscribe from DB.
 class SubscriptionManager {
   constructor() {
     this.manager = null;
@@ -22,19 +24,19 @@ class SubscriptionManager {
     }
 
     if (this.started) return;
-    
+
     this.isInitializing = true;
     try {
-      this.manager = new WebSocketManager();
+      this.manager = new PollingClient({ interval: 7000 }); // Poll every 7s
       const connected = await this.manager.start();
       if (connected) {
         this.started = true;
-        console.log('SubscriptionManager: WebSocket started');
+        logger.info('SubscriptionManager: PollingClient started');
       } else {
-        console.warn('SubscriptionManager: WebSocket failed to start (will retry on next subscribe attempt)');
+        logger.warn('SubscriptionManager: PollingClient failed to start');
       }
     } catch (err) {
-      console.warn('SubscriptionManager: failed to start WS:', err.message || err);
+      logger.warn('SubscriptionManager: failed to start PollingClient:', { error: err.message });
     } finally {
       this.isInitializing = false;
     }
@@ -46,14 +48,14 @@ class SubscriptionManager {
       await this.init();
     }
     if (!this.started) {
-      console.warn('SubscriptionManager: cannot subscribe because WS is not started (will retry on next attempt)');
+      logger.warn('SubscriptionManager: cannot subscribe because client is not started');
       return false;
     }
-    // batch subscribing handled by wsClient.subscribeTokens
+
     try {
       return await this.manager.subscribeTokens(tokens);
     } catch (err) {
-      console.error('SubscriptionManager: error subscribing tokens:', err.message || err);
+      logger.error('SubscriptionManager: error subscribing tokens:', { error: err.message });
       return false;
     }
   }
@@ -63,13 +65,12 @@ class SubscriptionManager {
       const res = await db.query('SELECT DISTINCT instrument_token FROM watchlist_item WHERE instrument_token IS NOT NULL');
       const tokens = res.rows.map(r => String(r.instrument_token)).filter(Boolean);
       if (tokens.length === 0) {
-        console.log('SubscriptionManager: no tokens to subscribe');
+        logger.info('SubscriptionManager: no tokens to subscribe');
         return false;
       }
-      // unsubscribe + resubscribe not available in wsClient; safest is just subscribe all (server will ignore duplicates)
       return await this.subscribeTokens(tokens);
     } catch (err) {
-      console.error('SubscriptionManager: error resubscribing from DB:', err.message || err);
+      logger.error('SubscriptionManager: error resubscribing from DB:', { error: err.message });
       return false;
     }
   }
@@ -79,9 +80,14 @@ class SubscriptionManager {
     try {
       return await this.subscribeTokens([String(token)]);
     } catch (err) {
-      console.error('SubscriptionManager: error subscribing to single token:', err.message || err);
+      logger.error('SubscriptionManager: error subscribing to single token:', { error: err.message });
       return false;
     }
+  }
+
+  getStatus() {
+    if (!this.manager) return { running: false, subscribed_count: 0 };
+    return this.manager.getStatus();
   }
 }
 

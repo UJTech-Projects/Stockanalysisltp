@@ -21,9 +21,11 @@
     "p-retry": "^5.0.0",
     "pg": "^8.11.0",
     "smartapi-javascript": "^1.0.0",
-    "totp-generator": "^2.0.0"
+    "totp-generator": "^2.0.0",
+    "winston": "^3.19.0"
   },
   "devDependencies": {
-    "nodemon": "^2.0.22"
+    "nodemon": "^2.0.22",
+    "pm2": "^6.0.14"
   }
 }

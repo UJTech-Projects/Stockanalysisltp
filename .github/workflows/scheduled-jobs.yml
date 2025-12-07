@@ -2,51 +2,27 @@ name: Scheduled Jobs
 
 on:
   schedule:
-    # Token refresh every 6 hours
+    # 1. Token Refresh: Every 6 hours
     - cron: '0 */6 * * *'
-    # Fetch LTP — run once daily after market close (approx 16:30 IST -> UTC convert appropriately)
-    - cron: '30 11 * * *' # This is 16:00 IST in UTC during non-DST; adjust as necessary
+    
+    # 2. Fetch LTP: Daily after market close (10:00 UTC = 15:30 IST)
+    - cron: '0 10 * * *'
+    
+    # 3. Resubscribe: Daily morning before market open (03:15 UTC = 08:45 IST)
+    - cron: '15 3 * * *'
 
 jobs:
-  refresh-token:
+  trigger-jobs:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Run Token Refresh
+        if: github.event.schedule == '0 */6 * * *'
+        run: curl -f --retry 3 --retry-connrefused --max-time 60 -X POST ${{ secrets.RENDER_APP_URL }}/jobs/refresh-token
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
+      - name: Run Fetch LTP
+        if: github.event.schedule == '0 10 * * *'
+        run: curl -f --retry 3 --retry-connrefused --max-time 60 -X POST ${{ secrets.RENDER_APP_URL }}/jobs/fetch-ltp
 
-      - name: Install deps
-        run: npm ci
-
-      - name: Run refresh-token script
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          ANGEL_API_KEY: ${{ secrets.ANGEL_API_KEY }}
-          ANGEL_CLIENT_CODE: ${{ secrets.ANGEL_CLIENT_CODE }}
-          ANGEL_CLIENT_PASSWORD: ${{ secrets.ANGEL_CLIENT_PASSWORD }}
-          ANGEL_TOTP_SECRET: ${{ secrets.ANGEL_TOTP_SECRET }}
-        run: node scripts/refreshToken.js
-
-  fetch-ltp:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
-      - name: Install deps
-        run: npm ci
-
-      - name: Run fetch-ltp script
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          ANGEL_API_KEY: ${{ secrets.ANGEL_API_KEY }}
-        run: node scripts/fetchLTP.js
+      - name: Run Resubscribe
+        if: github.event.schedule == '15 3 * * *'
+        run: curl -f --retry 3 --retry-connrefused --max-time 60 -X POST ${{ secrets.RENDER_APP_URL }}/jobs/resubscribe

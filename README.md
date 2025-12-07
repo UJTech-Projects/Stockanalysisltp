@@ -1,6 +1,6 @@
 # Angel One Watchlist & LTP History Backend
 
-A robust Node.js application to manage stock watchlists and persist daily Last Traded Price (LTP) history using the Angel One SmartAPI. It includes a smart lookup system, daily batch fetchers, real-time WebSocket updates, and a basic frontend dashboard.
+A robust Node.js application to manage stock watchlists and persist daily Last Traded Price (LTP) history using the Angel One SmartAPI. It includes a smart lookup system, daily batch fetchers, real-time WebSocket updates, and a **modern frontend dashboard**.
 
 ## 🚀 Features
 
@@ -10,7 +10,7 @@ A robust Node.js application to manage stock watchlists and persist daily Last T
     *   **Real-Time**: Optional WebSocket integration to update prices in real-time during market hours.
 *   **Historical Data**: Stores daily price history in PostgreSQL for analysis.
 *   **Secure Auth**: Handles Angel One authentication automatically using MPIN and TOTP generation.
-*   **Frontend Dashboard**: A clean web interface to manage stocks and view history.
+*   **Frontend Dashboard**: A premium, dark-mode web interface to manage stocks, view an LTP matrix, and analyze history.
 *   **Robust Architecture**:
     *   PostgreSQL for reliable data storage.
     *   Background jobs for token refreshing and data fetching.
@@ -72,9 +72,10 @@ A robust Node.js application to manage stock watchlists and persist daily Last T
 ### 1. Start the Server
 Starts the REST API and the Frontend Dashboard.
 ```bash
-npm start
+npx pm2 start ecosystem.config.js
+# Or for development: npm start
 ```
-*   **Access Frontend**: Open `http://localhost:5000` in your browser.
+*   **Access Dashboard**: Open `http://localhost:5000` in your browser.
 
 ### 2. (Optional) Start Real-Time WebSocket
 Listens for live ticks during market hours and updates the DB.
@@ -84,117 +85,26 @@ npm run ws
 
 ---
 
-## 📡 API Reference
+## 📡 Deployment
 
-### 1. Add Stock to Watchlist
-Adds a stock. You only need to provide the `symbol`. The backend will resolve the rest.
-
-*   **Endpoint**: `POST /api/watchlist/add`
-*   **Body**:
-    ```json
-    {
-      "symbol": "TCS" 
-    }
-    ```
-    *(Note: You can also pass specific `exchange` and `instrument_token` if you know them, but it's optional.)*
-
-*   **Response (Success)**:
-    ```json
-    {
-      "ok": true,
-      "symbol": "TCS-EQ",
-      "token": "11536",
-      "exchange": "NSE"
-    }
-    ```
-
-### 2. Remove Stock
-*   **Endpoint**: `POST /api/watchlist/remove`
-*   **Body**:
-    ```json
-    {
-      "symbol": "TCS-EQ"
-    }
-    ```
-*   **Response**: `{ "ok": true }`
-
-### 3. List Watchlist
-Returns all tracked stocks.
-
-*   **Endpoint**: `GET /api/watchlist/list`
-*   **Response**:
-    ```json
-    {
-      "items": [
-        {
-          "symbol": "TCS-EQ",
-          "exchange": "NSE",
-          "instrument_token": "11536",
-          "added_at": "2025-12-06T10:00:00.000Z"
-        },
-        ...
-      ]
-    }
-    ```
-
-### 4. Get Price History
-Returns the stored daily LTPs for a specific stock.
-
-*   **Endpoint**: `GET /api/watchlist/history/:symbol`
-*   **Example**: `GET /api/watchlist/history/TCS-EQ`
-*   **Response**:
-    ```json
-    {
-      "symbol": "TCS-EQ",
-      "history": [
-        {
-          "date": "2025-12-06T00:00:00.000Z",
-          "ltp": "3525.50"
-        },
-        {
-          "date": "2025-12-05T00:00:00.000Z",
-          "ltp": "3480.00"
-        }
-      ]
-    }
-    ```
+See [DEPLOYMENT.md](DEPLOYMENT.md) for a detailed guide on deploying to **Render.com** and setting up **GitHub Actions** for automated cron jobs.
 
 ---
 
-## 🤖 Automated Jobs (Scripts)
+## ⚠️ Troubleshooting & FAQ
 
-To keep your data fresh without manual intervention, you should schedule these scripts (e.g., via Cron, Windows Task Scheduler, or GitHub Actions).
+### Connection terminated unexpectedly
+If you see `Batch fetch failed: {"error":"Connection terminated unexpectedly"}`, it usually means the database connection was closed by the remote server (common with cloud DBs).
+*   **Fix**: The code handles this with auto-reconnection pools, but ensure your `DATABASE_URL` is correct and allows external connections.
 
-### 1. `scripts/refreshToken.js`
-*   **Purpose**: Generates a new Access Token (valid for 24h) using your MPIN/TOTP.
-*   **Frequency**: Run every **6-12 hours**.
-*   **Command**: `node scripts/refreshToken.js`
+### What if my TOTP Secret expires?
+If your TOTP secret changes (e.g., you regenerated it on the Angel One portal):
+1.  Get the new TOTP Secret (Base32 string).
+2.  Update the `ANGEL_TOTP_SECRET` variable in your `.env` file (locally) or in your Render Environment Variables (production).
+3.  Restart the application (`npx pm2 restart 0`).
 
-### 2. `scripts/fetchLTP.js`
-*   **Purpose**: Fetches the closing price (LTP) for ALL stocks in your watchlist and saves it to the database.
-*   **Frequency**: Run **once daily** (e.g., at 4:00 PM after market close).
-*   **Command**: `node scripts/fetchLTP.js`
+### Login Failed / Invalid TOTP
+Ensure your system time is synced correctly. TOTP generation depends on accurate clock time.
 
-### 3. `scripts/syncInstruments.js`
-*   **Purpose**: Downloads the latest instrument list (new IPOs, symbol changes) from Angel One.
-*   **Frequency**: Run **once a week** or month.
-*   **Command**: `node scripts/syncInstruments.js`
-
----
-
-## 🗄️ Database Schema
-
-*   **`watchlist_item`**: Stores your tracked stocks (Symbol, Token, Exchange).
-*   **`ltp_history`**: Stores the price data.
-    *   Columns: `symbol`, `date`, `ltp`, `exchange`, `fetched_at`.
-    *   Constraint: Unique combination of `(symbol, date)` ensures only one price entry per day per stock.
-*   **`instrument_master`**: A cached copy of all ~140k tradable instruments on Angel One, used for lookups.
-*   **`angel_tokens`**: Stores the active API Access/Refresh tokens.
-
----
-
-## ⚠️ Troubleshooting
-
-*   **Login Failed / Invalid TOTP**: ensure your system time is synced correctly, as TOTP is time-based. Verify `ANGEL_TOTP_SECRET` in `.env`.
-*   **No Instrument Found**: If adding a stock fails, try running `node scripts/syncInstruments.js` to update the master list.
-*   **Database Connection Error**: Check your `DATABASE_URL` and ensure your IP is whitelisted in your database provider's settings.
+### No Instrument Found
+If adding a stock fails, try running `node scripts/syncInstruments.js` to update the master list of instruments from Angel One.

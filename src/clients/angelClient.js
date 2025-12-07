@@ -76,8 +76,8 @@ async function getLTPBatch(exchangeTokensMap) {
   const accessToken = r.rows[0]?.access_token;
 
   const params = {
-      mode: "LTP",
-      exchangeTokens: exchangeTokensMap
+    mode: "LTP",
+    exchangeTokens: exchangeTokensMap
   };
 
   // If SDK available and has marketData, use it
@@ -100,4 +100,38 @@ async function getLTPBatch(exchangeTokensMap) {
   return resp;
 }
 
-module.exports = { generateSessionOrToken, getLTPBatch };
+async function getCandleData({ symbolToken, exchange, interval, fromdate, todate }) {
+  // get latest access token
+  const r = await db.query('SELECT access_token FROM angel_tokens ORDER BY last_refreshed DESC LIMIT 1');
+  const accessToken = r.rows[0]?.access_token;
+  if (!accessToken) throw new Error('No access token available');
+
+  const params = {
+    exchange,
+    symboltoken: symbolToken,
+    interval,
+    fromdate,
+    todate
+  };
+
+  // If SDK available, use it
+  if (SmartAPI) {
+    const client = new SmartAPI({ api_key: process.env.ANGEL_API_KEY, access_token: accessToken });
+    if (typeof client.getCandleData === 'function') {
+      return client.getCandleData(params);
+    }
+  }
+
+  // Fallback to HTTP
+  const url = `${API_ROOT}/rest/secure/angelbroking/historical/v1/getCandleData`;
+  const headers = {
+    'X-PrivateKey': process.env.ANGEL_API_KEY,
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${accessToken}`
+  };
+
+  const resp = await pRetry(() => axios.post(url, params, { headers }).then(r => r.data), { retries: 3 });
+  return resp;
+}
+
+module.exports = { generateSessionOrToken, getLTPBatch, getCandleData };

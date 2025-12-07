@@ -1,341 +1,521 @@
-const API_BASE = '/api/watchlist';
-
-const symbolInput = document.getElementById('symbolInput');
-const addBtn = document.getElementById('addBtn');
-const messageDiv = document.getElementById('message');
-const watchlistTableBody = document.querySelector('#watchlistTable tbody');
-const historySection = document.getElementById('historySection');
-const historyTitle = document.getElementById('historyTitle');
-const historyTableBody = document.querySelector('#historyTable tbody');
-const closeHistoryBtn = document.getElementById('closeHistoryBtn');
-
-const dashboardBtn = document.getElementById('dashboardBtn');
-const matrixSection = document.getElementById('matrixSection');
-const matrixTable = document.getElementById('matrixTable');
-const closeMatrixBtn = document.getElementById('closeMatrixBtn');
-const watchlistSection = document.getElementById('watchlistSection');
-
-// Search suggestion elements
-let suggestionsDiv = null;
-
-// Load watchlist on start
 document.addEventListener('DOMContentLoaded', () => {
-    fetchWatchlist();
-    createSearchSuggestions();
-});
+    const symbolInput = document.getElementById('symbolInput');
+    const searchResults = document.getElementById('searchResults');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const matrixHeaderRow = document.getElementById('matrixHeaderRow');
+    const matrixBody = document.getElementById('matrixBody');
+    const minPriceInput = document.getElementById('minPriceInput');
+    const exportBtn = document.getElementById('exportBtn');
 
-addBtn.addEventListener('click', addStock);
-closeHistoryBtn.addEventListener('click', () => {
-    historySection.classList.add('hidden');
-    watchlistSection.classList.remove('hidden');
-});
+    // Status Elements
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+    const reconnectBtn = document.getElementById('reconnectBtn');
 
-dashboardBtn.addEventListener('click', loadMatrix);
-closeMatrixBtn.addEventListener('click', () => {
-    matrixSection.classList.add('hidden');
-    watchlistSection.classList.remove('hidden');
-});
+    // Modal elements
+    const historyModal = document.getElementById('historyModal');
+    const closeModal = document.getElementById('closeModal');
+    const modalTitle = document.getElementById('modalTitle');
+    const historyBody = document.getElementById('historyBody');
+    const deleteStockBtn = document.getElementById('deleteStockBtn');
 
-// Allow Enter key to submit
-symbolInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') addStock();
-});
-
-// Search on input with debounce
-let searchTimeout;
-symbolInput.addEventListener('input', (e) => {
-    clearTimeout(searchTimeout);
-    const query = e.target.value.trim();
-    if (query.length < 2) {
-        hideSuggestions();
-        return;
-    }
-    searchTimeout = setTimeout(() => searchStocks(query), 300);
-});
-
-function createSearchSuggestions() {
-    suggestionsDiv = document.createElement('div');
-    suggestionsDiv.id = 'searchSuggestions';
-    suggestionsDiv.className = 'search-suggestions hidden';
-    suggestionsDiv.style.cssText = `
-        position: absolute;
-        background: white;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        max-height: 300px;
-        overflow-y: auto;
-        z-index: 1000;
-        min-width: 300px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    `;
-    symbolInput.parentElement.style.position = 'relative';
-    symbolInput.parentElement.appendChild(suggestionsDiv);
-}
-
-async function searchStocks(query) {
-    try {
-        const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(query)}`);
-        const data = await res.json();
-        
-        if (data.results && data.results.length > 0) {
-            showSuggestions(data.results);
-        } else {
-            showMessage(`No stocks found for "${query}"`, 'info');
-            hideSuggestions();
-        }
-    } catch (err) {
-        console.error('Search failed:', err);
-    }
-}
-
-function showSuggestions(results) {
-    suggestionsDiv.innerHTML = '';
-    results.forEach(result => {
-        const item = document.createElement('div');
-        item.className = 'suggestion-item';
-        item.style.cssText = `
-            padding: 10px;
-            border-bottom: 1px solid #eee;
-            cursor: pointer;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        `;
-        item.innerHTML = `
-            <div>
-                <strong>${result.symbol}</strong><br>
-                <small style="color: #666;">${result.name || ''}</small>
-            </div>
-            <small style="color: #999;">${result.exch_seg}</small>
-        `;
-        item.addEventListener('click', () => {
-            symbolInput.value = result.symbol;
-            hideSuggestions();
-            addStockWithToken(result.symbol, result.token, result.exch_seg);
-        });
-        item.addEventListener('mouseover', () => {
-            item.style.backgroundColor = '#f0f0f0';
-        });
-        item.addEventListener('mouseout', () => {
-            item.style.backgroundColor = 'white';
-        });
-        suggestionsDiv.appendChild(item);
-    });
-    suggestionsDiv.classList.remove('hidden');
-}
-
-function hideSuggestions() {
-    suggestionsDiv.classList.add('hidden');
-}
-
-async function loadMatrix() {
-    showMessage('Loading dashboard...', 'info');
-    watchlistSection.classList.add('hidden');
-    historySection.classList.add('hidden');
-    matrixSection.classList.remove('hidden');
+    let currentSymbol = null; // Track which symbol is open in modal
+    let chartInstance = null; // Chart.js instance for the modal
     
-    try {
-        const res = await fetch(`${API_BASE}/matrix`);
-        const data = await res.json();
-        renderMatrix(data);
-        showMessage('');
-    } catch (err) {
-        showMessage('Failed to load dashboard', 'error');
-    }
-}
+    // State for Data, Sorting, and Filtering
+    let globalMatrixData = { dates: [], matrix: [] };
+    let sortConfig = { column: 'symbol', direction: 'asc' }; // column: 'symbol' or date string
+    let minPriceFilter = null;
 
-function renderMatrix(data) {
-    const { dates, matrix } = data;
-    const thead = matrixTable.querySelector('thead');
-    const tbody = matrixTable.querySelector('tbody');
+    // Initial Load
+    fetchMatrix();
+    pollStatus();
+    setInterval(pollStatus, 7000); // Poll status every 7 seconds
+
+    // Event Listeners
+    refreshBtn.addEventListener('click', fetchMatrix);
     
-    // Build Headers
-    let headerHTML = '<tr><th>Symbol</th>';
-    dates.forEach(date => {
-        // Format date: "Dec 06"
-        const d = new Date(date);
-        const fmt = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        headerHTML += `<th>${fmt}</th>`;
-    });
-    headerHTML += '</tr>';
-    thead.innerHTML = headerHTML;
-
-    // Build Rows
-    tbody.innerHTML = '';
-    matrix.forEach(row => {
-        const tr = document.createElement('tr');
-        let rowHTML = `<td><strong>${row.symbol}</strong></td>`;
-        
-        dates.forEach(date => {
-            const val = row[date];
-            rowHTML += `<td>${val !== '-' ? '₹' + parseFloat(val).toFixed(2) : '-'}</td>`;
-        });
-        
-        tr.innerHTML = rowHTML;
-        tbody.appendChild(tr);
-    });
-}
-
-async function fetchWatchlist() {
-    try {
-        const res = await fetch(`${API_BASE}/list`);
-        const data = await res.json();
-        renderWatchlist(data.items);
-    } catch (err) {
-        showMessage('Failed to fetch watchlist', 'error');
+    // Reconnect Listener
+    if (reconnectBtn) {
+        reconnectBtn.addEventListener('click', handleReconnect);
     }
-}
-
-function renderWatchlist(items) {
-    watchlistTableBody.innerHTML = '';
-    if (!items || items.length === 0) {
-        watchlistTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center">No stocks in watchlist</td></tr>';
-        return;
+    
+    // Export Listener
+    if (exportBtn) {
+        exportBtn.addEventListener('click', exportToCSV);
     }
 
-    items.forEach(item => {
-        const tr = document.createElement('tr');
-        
-        const dateAdded = new Date(item.added_at).toLocaleDateString();
-        
-        tr.innerHTML = `
-            <td><strong>${item.symbol}</strong></td>
-            <td>${item.exchange || '-'}</td>
-            <td>${dateAdded}</td>
-            <td>
-                <button class="info" onclick="viewHistory('${item.symbol}')">History</button>
-                <button class="danger" onclick="removeStock('${item.symbol}')">Remove</button>
-            </td>
-        `;
-        watchlistTableBody.appendChild(tr);
+    symbolInput.addEventListener('input', debounce(handleSearch, 300));
+    
+    // Filter Input Listener
+    minPriceInput.addEventListener('input', (e) => {
+        const val = e.target.value.trim();
+        minPriceFilter = val ? parseFloat(val) : null;
+        renderMatrix(); // Re-render with new filter
     });
-}
-
-async function addStock() {
-    const symbol = symbolInput.value.trim().toUpperCase();
-    if (!symbol) return;
-
-    addBtn.disabled = true;
-    addBtn.textContent = 'Adding...';
-    showMessage('');
-
-    try {
-        const res = await fetch(`${API_BASE}/add`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ symbol })
-        });
-        const data = await res.json();
-
-        if (res.ok) {
-            showMessage(`Added ${data.symbol || symbol} successfully`, 'success');
-            symbolInput.value = '';
-            hideSuggestions();
-            fetchWatchlist();
-        } else {
-            showMessage(data.error || 'Failed to add stock', 'error');
+    
+    // Search Bar Behavior: Open on focus, don't close on click outside
+    symbolInput.addEventListener('focus', () => {
+        searchResults.classList.remove('hidden');
+        if (symbolInput.value.trim().length < 2 && searchResults.children.length === 0) {
+             searchResults.innerHTML = '<div class="search-result-item" style="cursor:default; justify-content:center;">Type to search...</div>';
         }
-    } catch (err) {
-        showMessage('Network error', 'error');
-    } finally {
-        addBtn.disabled = false;
-        addBtn.textContent = 'Add Stock';
-    }
-}
+    });
 
-async function addStockWithToken(symbol, token, exchange) {
-    addBtn.disabled = true;
-    addBtn.textContent = 'Adding...';
-    showMessage('');
+    // Removed the "click outside" listener as requested.
+    // document.addEventListener('click', (e) => { ... });
 
-    try {
-        const res = await fetch(`${API_BASE}/add`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ symbol, instrument_token: token, exchange })
-        });
-        const data = await res.json();
+    closeModal.addEventListener('click', () => {
+        historyModal.classList.add('hidden');
+        currentSymbol = null;
+    });
 
-        if (res.ok) {
-            showMessage(`Added ${data.symbol || symbol} successfully`, 'success');
-            symbolInput.value = '';
-            hideSuggestions();
-            fetchWatchlist();
-        } else {
-            showMessage(data.error || 'Failed to add stock', 'error');
-        }
-    } catch (err) {
-        showMessage('Network error', 'error');
-    } finally {
-        addBtn.disabled = false;
-        addBtn.textContent = 'Add Stock';
-    }
-}
+    deleteStockBtn.addEventListener('click', handleDeleteStock);
 
-async function removeStock(symbol) {
-    if (!confirm(`Remove ${symbol} from watchlist?`)) return;
 
-    try {
-        const res = await fetch(`${API_BASE}/remove`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ symbol })
-        });
-        
-        if (res.ok) {
-            fetchWatchlist();
-        } else {
+    // --- Functions ---
+
+    async function fetchMatrix() {
+        try {
+            refreshBtn.querySelector('i').classList.add('fa-spin');
+            const res = await fetch('/api/watchlist/matrix');
             const data = await res.json();
-            showMessage(data.error || 'Failed to remove', 'error');
+            
+            // Store global data
+            globalMatrixData = data;
+            
+            renderMatrix();
+        } catch (err) {
+            console.error('Failed to fetch matrix:', err);
+        } finally {
+            refreshBtn.querySelector('i').classList.remove('fa-spin');
         }
-    } catch (err) {
-        showMessage('Network error', 'error');
     }
-}
 
-async function viewHistory(symbol) {
-    historySection.classList.remove('hidden');
-    historyTitle.textContent = `History: ${symbol}`;
-    historyTableBody.innerHTML = '<tr><td colspan="2">Loading...</td></tr>';
+    function renderMatrix() {
+        const { dates, matrix } = globalMatrixData;
+        if (!dates) return;
 
-    try {
-        const res = await fetch(`${API_BASE}/history/${symbol}`);
-        const data = await res.json();
+        // 1. Filter Data
+        let displayData = [...matrix];
+        if (minPriceFilter !== null && !isNaN(minPriceFilter)) {
+            // Filter based on the LATEST date (first date in dates array usually, or logic below)
+            // Dates are typically returned sorted DESC (newest first) by the API.
+            // Let's verify: app.js logic assumes dates[0] is newest? 
+            // API: "dates" array from "SELECT DISTINCT date ... ORDER BY date DESC" -> Yes, dates[0] is newest.
+            const newestDate = dates[0];
+            
+            displayData = displayData.filter(row => {
+                const val = row[newestDate];
+                if (val === '-' || val === null) return false;
+                return parseFloat(val) >= minPriceFilter;
+            });
+        }
+
+        // 2. Sort Data
+        displayData.sort((a, b) => {
+            let valA, valB;
+
+            if (sortConfig.column === 'symbol') {
+                valA = a.symbol;
+                valB = b.symbol;
+            } else {
+                // Sort by price on specific date
+                valA = a[sortConfig.column];
+                valB = b[sortConfig.column];
+                
+                // Handle '-' or missing
+                valA = (valA === '-' || valA === null) ? -Infinity : parseFloat(valA);
+                valB = (valB === '-' || valB === null) ? -Infinity : parseFloat(valB);
+            }
+
+            if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+            if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+
+        // 3. Render Header
+        // Clear existing headers
+        matrixHeaderRow.innerHTML = '';
+
+        // Symbol Header
+        const symbolTh = document.createElement('th');
+        symbolTh.textContent = 'Symbol';
+        addSortIcon(symbolTh, 'symbol');
+        symbolTh.style.cursor = 'pointer';
+        symbolTh.addEventListener('click', () => handleSortClick('symbol'));
+        matrixHeaderRow.appendChild(symbolTh);
+
+        // Date Headers
+        dates.forEach(date => {
+            const th = document.createElement('th');
+            th.textContent = formatDate(date);
+            th.style.cursor = 'pointer';
+            addSortIcon(th, date); // Pass raw date string as column key
+            th.addEventListener('click', () => handleSortClick(date));
+            matrixHeaderRow.appendChild(th);
+        });
+
+        // 4. Render Body
+        matrixBody.innerHTML = '';
+
+        displayData.forEach(row => {
+            const tr = document.createElement('tr');
+
+            // Symbol Cell (Clickable)
+            const symbolTd = document.createElement('td');
+            symbolTd.textContent = row.symbol;
+            symbolTd.addEventListener('click', () => openHistory(row.symbol));
+            tr.appendChild(symbolTd);
+
+            // Data Cells
+            dates.forEach((date, index) => {
+                const td = document.createElement('td');
+                const val = row[date];
+                td.textContent = val !== '-' ? `₹${val}` : '-';
+
+                // Color Logic
+                if (val !== '-') {
+                    const dateObj = new Date(date);
+                    const day = dateObj.getDay(); // 0 = Sun, 6 = Sat
+
+                    if (day === 0 || day === 6) {
+                        td.classList.add('text-neutral');
+                    } else {
+                        // Compare with previous day (next index in dates array since dates are DESC)
+                        const prevDate = dates[index + 1];
+                        const prevVal = prevDate ? row[prevDate] : null;
+
+                        if (prevVal && prevVal !== '-') {
+                            if (parseFloat(val) > parseFloat(prevVal)) {
+                                td.classList.add('text-green');
+                            } else if (parseFloat(val) < parseFloat(prevVal)) {
+                                td.classList.add('text-red');
+                            }
+                        }
+                    }
+                }
+
+                tr.appendChild(td);
+            });
+
+            matrixBody.appendChild(tr);
+        });
+    }
+
+    function handleSortClick(column) {
+        if (sortConfig.column === column) {
+            // Toggle direction
+            sortConfig.direction = sortConfig.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+            // New column, default to desc for numbers (dates), asc for text (symbol)
+            sortConfig.column = column;
+            sortConfig.direction = column === 'symbol' ? 'asc' : 'desc';
+        }
+        renderMatrix();
+    }
+
+    function addSortIcon(thElement, columnKey) {
+        if (sortConfig.column === columnKey) {
+            const icon = document.createElement('i');
+            icon.className = sortConfig.direction === 'asc' ? 'fa-solid fa-sort-up' : 'fa-solid fa-sort-down';
+            icon.style.marginLeft = '0.5rem';
+            thElement.appendChild(icon);
+        }
+    }
+
+    async function handleSearch(e) {
+        const query = e.target.value.trim();
         
-        renderHistory(data.history);
-    } catch (err) {
-        historyTableBody.innerHTML = '<tr><td colspan="2">Failed to load history</td></tr>';
+        // Modified behavior: Don't hide if short, just show placeholder
+        if (query.length < 2) {
+            searchResults.innerHTML = '<div class="search-result-item" style="cursor:default; justify-content:center;">Type to search...</div>';
+            searchResults.classList.remove('hidden');
+            return;
+        }
+
+        try {
+            const res = await fetch(`/api/watchlist/search?q=${encodeURIComponent(query)}`);
+            const data = await res.json();
+            renderSearchResults(data.results);
+        } catch (err) {
+            console.error('Search failed:', err);
+        }
     }
-}
 
-function renderHistory(history) {
-    historyTableBody.innerHTML = '';
-    if (!history || history.length === 0) {
-        historyTableBody.innerHTML = '<tr><td colspan="2">No history data available yet</td></tr>';
-        return;
+    function renderSearchResults(results) {
+        searchResults.innerHTML = '';
+        if (!results || results.length === 0) {
+            searchResults.innerHTML = '<div class="search-result-item" style="cursor:default; justify-content:center;">No results found</div>';
+        } else {
+            results.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'search-result-item';
+                div.innerHTML = `
+                    <div class="symbol">${item.symbol}</div>
+                    <div class="name">${item.name || item.exch_seg}</div>
+                `;
+                div.addEventListener('click', () => addStock(item));
+                searchResults.appendChild(div);
+            });
+        }
+        searchResults.classList.remove('hidden');
     }
 
-    history.forEach(row => {
-        const tr = document.createElement('tr');
-        // Format date clearly
-        const dateStr = new Date(row.date).toLocaleDateString();
-        tr.innerHTML = `
-            <td>${dateStr}</td>
-            <td>₹${parseFloat(row.ltp).toFixed(2)}</td>
-        `;
-        historyTableBody.appendChild(tr);
-    });
-}
+    async function addStock(item) {
+        symbolInput.value = '';
+        searchResults.classList.add('hidden');
 
-function showMessage(msg, type = 'success') {
-    messageDiv.textContent = msg;
-    messageDiv.className = `message ${type}`;
-    setTimeout(() => {
-        messageDiv.textContent = '';
-        messageDiv.className = 'message';
-    }, 5000);
-}
+        try {
+            const res = await fetch('/api/watchlist/add', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    symbol: item.symbol,
+                    exchange: item.exch_seg,
+                    instrument_token: item.token
+                })
+            });
+            const resp = await res.json();
+            if (resp.ok) {
+                // Refresh matrix
+                fetchMatrix();
+            } else {
+                alert('Failed to add stock: ' + resp.error);
+            }
+        } catch (err) {
+            console.error('Add stock failed:', err);
+            alert('Error adding stock');
+        }
+    }
 
-// Global expose for onclick handlers
-window.removeStock = removeStock;
-window.viewHistory = viewHistory;
+    async function openHistory(symbol) {
+        currentSymbol = symbol;
+        modalTitle.textContent = `${symbol} History`;
+        historyModal.classList.remove('hidden');
+        historyBody.innerHTML = '<tr><td colspan="2">Loading...</td></tr>';
+
+        // Clear previous chart if exists
+        if (chartInstance) {
+            chartInstance.destroy();
+            chartInstance = null;
+        }
+
+        try {
+            const res = await fetch(`/api/watchlist/history/${symbol}`);
+            const data = await res.json();
+            renderHistory(data.history, symbol);
+        } catch (err) {
+            historyBody.innerHTML = '<tr><td colspan="2">Error loading history</td></tr>';
+        }
+    }
+
+    function renderHistory(history, symbol) {
+        historyBody.innerHTML = '';
+        if (!history || history.length === 0) {
+            historyBody.innerHTML = '<tr><td colspan="2">No history available</td></tr>';
+            return;
+        }
+
+        // Render Table
+        history.forEach(row => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${formatDate(row.date)}</td>
+                <td>₹${row.ltp}</td>
+            `;
+            historyBody.appendChild(tr);
+        });
+
+        // Render Chart
+        renderStockChart(history, symbol);
+    }
+
+    function renderStockChart(history, symbol) {
+        const ctx = document.getElementById('stockChart').getContext('2d');
+        
+        // History is DESC (Newest first). We need Oldest first for chart.
+        // We also limit to last 30 points if the API returns more, though API limits to 10 currently.
+        // Let's rely on what we have.
+        const reversedHistory = [...history].reverse();
+
+        const labels = reversedHistory.map(h => formatDate(h.date));
+        const dataPoints = reversedHistory.map(h => parseFloat(h.ltp));
+
+        // Determine Color: Green if Newest > Oldest, else Red
+        // Newest is the last item in reversedHistory (or first in original history)
+        const newestPrice = dataPoints[dataPoints.length - 1];
+        const oldestPrice = dataPoints[0];
+        
+        const isBullish = newestPrice >= oldestPrice;
+        const color = isBullish ? '#10b981' : '#ef4444'; // Success Green or Danger Red
+        const bgColor = isBullish ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)';
+
+        chartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Price (₹)',
+                    data: dataPoints,
+                    borderColor: color,
+                    backgroundColor: bgColor,
+                    borderWidth: 2,
+                    pointRadius: 3,
+                    pointBackgroundColor: color,
+                    fill: true,
+                    tension: 0.3
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                            label: (context) => `Price: ₹${context.raw}`
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { color: '#94a3b8', maxTicksLimit: 6 },
+                        grid: { display: false }
+                    },
+                    y: {
+                        ticks: { color: '#94a3b8' },
+                        grid: { color: 'rgba(255,255,255,0.05)' }
+                    }
+                }
+            }
+        });
+    }
+
+    async function handleDeleteStock() {
+        if (!currentSymbol || !confirm(`Remove ${currentSymbol} from watchlist?`)) return;
+
+        try {
+            const res = await fetch('/api/watchlist/remove', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ symbol: currentSymbol })
+            });
+
+            if (res.ok) {
+                historyModal.classList.add('hidden');
+                currentSymbol = null;
+                fetchMatrix(); // Refresh dashboard
+            } else {
+                alert('Failed to delete stock');
+            }
+        } catch (err) {
+            console.error('Delete failed:', err);
+        }
+    }
+
+    // Utilities
+    function debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    }
+
+    function formatDate(dateStr) {
+        // Simple formatter: YYYY-MM-DD -> DD MMM
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return dateStr;
+        return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    }
+
+    async function pollStatus() {
+        try {
+            const res = await fetch('/api/status');
+            const data = await res.json();
+            if (data.ok && data.status) {
+                updateStatusUI(data.status.running);
+            }
+        } catch (err) {
+            console.error('Status poll failed:', err);
+            updateStatusUI(false);
+        }
+    }
+
+    function updateStatusUI(isRunning) {
+        if (isRunning) {
+            statusDot.style.backgroundColor = 'var(--success)';
+            statusText.textContent = 'Connected';
+            statusText.style.color = 'var(--success)';
+            reconnectBtn.classList.add('hidden');
+        } else {
+            statusDot.style.backgroundColor = 'var(--danger)';
+            statusText.textContent = 'Disconnected';
+            statusText.style.color = 'var(--danger)';
+            reconnectBtn.classList.remove('hidden');
+        }
+    }
+
+    async function handleReconnect() {
+        try {
+            reconnectBtn.disabled = true;
+            reconnectBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Connecting...';
+            
+            const res = await fetch('/jobs/resubscribe', { method: 'POST' });
+            const data = await res.json();
+            
+            if (data.ok) {
+                // Poll immediately to check status
+                setTimeout(pollStatus, 1000);
+            } else {
+                alert('Connection failed: ' + (data.error || 'Unknown error'));
+            }
+        } catch (err) {
+            alert('Connection failed: ' + err.message);
+        } finally {
+            reconnectBtn.disabled = false;
+            reconnectBtn.innerHTML = '<i class="fa-solid fa-plug"></i> Connect';
+        }
+    }
+
+    function exportToCSV() {
+        const { dates, matrix } = globalMatrixData;
+        if (!matrix || matrix.length === 0) return;
+
+        // Build CSV content
+        // Header: Use DD/MM/YYYY format for CSV
+        const headers = ['Symbol', ...dates.map(d => {
+            const dateObj = new Date(d);
+            if (isNaN(dateObj.getTime())) return d;
+            return dateObj.toLocaleDateString('en-GB'); // DD/MM/YYYY
+        })];
+        const csvRows = [headers.join(',')];
+
+        // Rows
+        matrix.forEach(row => {
+            const rowData = [row.symbol];
+            dates.forEach(d => {
+                rowData.push(row[d] !== '-' && row[d] !== null ? row[d] : '');
+            });
+            csvRows.push(rowData.join(','));
+        });
+
+        const csvString = csvRows.join('\n');
+        const blob = new Blob([csvString], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.setAttribute('hidden', '');
+        a.setAttribute('href', url);
+        a.setAttribute('download', `stock_matrix_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }
+});
