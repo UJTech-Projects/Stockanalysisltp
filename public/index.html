@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Angel One Watchlist</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>My Watchlist</h1>
+            <div class="add-stock-form">
+                <input type="text" id="symbolInput" placeholder="Enter Symbol (e.g. RELIANCE)" autocomplete="off">
+                <button id="addBtn">Add Stock</button>
+                <button id="dashboardBtn" class="info">Matrix Dashboard</button>
+            </div>
+            <div id="message" class="message"></div>
+        </header>
+
+        <main>
+            <div id="watchlistSection" class="watchlist-section">
+                <h2>Stocks</h2>
+                <table id="watchlistTable">
+                    <thead>
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Exchange</th>
+                            <th>Added At</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Rows will be added here -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="matrixSection" class="history-section hidden" style="max-width: 100%; overflow-x: auto;">
+                <div class="history-header">
+                    <h2>Price Matrix (Last 30 Days)</h2>
+                    <button id="closeMatrixBtn">Close</button>
+                </div>
+                <table id="matrixTable">
+                    <thead>
+                        <!-- Dynamic Headers -->
+                    </thead>
+                    <tbody>
+                        <!-- Matrix Rows -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="historySection" class="history-section hidden">
+                <div class="history-header">
+                    <h2 id="historyTitle">History</h2>
+                    <button id="closeHistoryBtn">Close</button>
+                </div>
+                <table id="historyTable">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>LTP</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- History rows -->
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
