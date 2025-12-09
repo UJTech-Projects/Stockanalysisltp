@@ -12,7 +12,9 @@ async function run() {
   // Force SSL for cloud databases (Aiven requires it)
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
+    ssl: {
+      rejectUnauthorized: false
+    }
   });
   const client = await pool.connect();
   try {

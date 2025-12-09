@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let currentSymbol = null; // Track which symbol is open in modal
     let chartInstance = null; // Chart.js instance for the modal
-    
+
     // State for Data, Sorting, and Filtering
     let globalMatrixData = { dates: [], matrix: [] };
     let sortConfig = { column: 'symbol', direction: 'asc' }; // column: 'symbol' or date string
@@ -34,33 +34,44 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Event Listeners
     refreshBtn.addEventListener('click', fetchMatrix);
-    
+
     // Reconnect Listener
     if (reconnectBtn) {
         reconnectBtn.addEventListener('click', handleReconnect);
     }
-    
+
     // Export Listener
     if (exportBtn) {
         exportBtn.addEventListener('click', exportToCSV);
     }
 
     symbolInput.addEventListener('input', debounce(handleSearch, 300));
-    
+
     // Filter Input Listener
     minPriceInput.addEventListener('input', (e) => {
         const val = e.target.value.trim();
         minPriceFilter = val ? parseFloat(val) : null;
         renderMatrix(); // Re-render with new filter
     });
-    
+
     // Search Bar Behavior: Open on focus, don't close on click outside
     symbolInput.addEventListener('focus', () => {
-        searchResults.classList.remove('hidden');
+        // searchResults.classList.remove('hidden');
+        searchResults.style.display = 'block'
         if (symbolInput.value.trim().length < 2 && searchResults.children.length === 0) {
-             searchResults.innerHTML = '<div class="search-result-item" style="cursor:default; justify-content:center;">Type to search...</div>';
+            searchResults.innerHTML = '<div class="search-result-item" style="cursor:default; justify-content:center;">Type to search...</div>';
         }
     });
+
+    // Hide on clicking outside
+    document.addEventListener('click', (e) => {
+        let symbolInput = document.getElementById('symbolInput');
+        let searchResults = document.getElementById('searchResults');
+        if (e.target !== symbolInput && e.target !== searchResults) {
+            searchResults.style.display = 'none'
+        }
+    })
+
 
     // Removed the "click outside" listener as requested.
     // document.addEventListener('click', (e) => { ... });
@@ -80,10 +91,10 @@ document.addEventListener('DOMContentLoaded', () => {
             refreshBtn.querySelector('i').classList.add('fa-spin');
             const res = await fetch('/api/watchlist/matrix');
             const data = await res.json();
-            
+
             // Store global data
             globalMatrixData = data;
-            
+
             renderMatrix();
         } catch (err) {
             console.error('Failed to fetch matrix:', err);
@@ -104,7 +115,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Let's verify: app.js logic assumes dates[0] is newest? 
             // API: "dates" array from "SELECT DISTINCT date ... ORDER BY date DESC" -> Yes, dates[0] is newest.
             const newestDate = dates[0];
-            
+
             displayData = displayData.filter(row => {
                 const val = row[newestDate];
                 if (val === '-' || val === null) return false;
@@ -123,7 +134,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Sort by price on specific date
                 valA = a[sortConfig.column];
                 valB = b[sortConfig.column];
-                
+
                 // Handle '-' or missing
                 valA = (valA === '-' || valA === null) ? -Infinity : parseFloat(valA);
                 valB = (valB === '-' || valB === null) ? -Infinity : parseFloat(valB);
@@ -148,7 +159,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Date Headers
         dates.forEach(date => {
+            const day = new Date(date).getDay();
             const th = document.createElement('th');
+
+            if (day === 0 || day === 6) th.style.display = 'none'; // skip weekend headers
+
             th.textContent = formatDate(date);
             th.style.cursor = 'pointer';
             addSortIcon(th, date); // Pass raw date string as column key
@@ -171,8 +186,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Data Cells
             dates.forEach((date, index) => {
                 const td = document.createElement('td');
-                const val = row[date];
-                td.textContent = val !== '-' ? `₹${val}` : '-';
+                let val = row[date];
+                val = parseFloat(val).toFixed(2).toString();
+                td.textContent = val !== '-' ? `${val}` : '-';
 
                 // Color Logic
                 if (val !== '-') {
@@ -180,7 +196,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     const day = dateObj.getDay(); // 0 = Sun, 6 = Sat
 
                     if (day === 0 || day === 6) {
-                        td.classList.add('text-neutral');
+                        // td.classList.add('text-neutral');
+                        td.style.display = 'none';
                     } else {
                         // Compare with previous day (next index in dates array since dates are DESC)
                         const prevDate = dates[index + 1];
@@ -226,7 +243,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function handleSearch(e) {
         const query = e.target.value.trim();
-        
+
         // Modified behavior: Don't hide if short, just show placeholder
         if (query.length < 2) {
             searchResults.innerHTML = '<div class="search-result-item" style="cursor:default; justify-content:center;">Type to search...</div>';
@@ -322,7 +339,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td>${formatDate(row.date)}</td>
-                <td>₹${row.ltp}</td>
+                <td>${row.ltp.toFixed(2)}</td>
             `;
             historyBody.appendChild(tr);
         });
@@ -333,7 +350,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderStockChart(history, symbol) {
         const ctx = document.getElementById('stockChart').getContext('2d');
-        
+
         // History is DESC (Newest first). We need Oldest first for chart.
         // We also limit to last 30 points if the API returns more, though API limits to 10 currently.
         // Let's rely on what we have.
@@ -346,7 +363,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Newest is the last item in reversedHistory (or first in original history)
         const newestPrice = dataPoints[dataPoints.length - 1];
         const oldestPrice = dataPoints[0];
-        
+
         const isBullish = newestPrice >= oldestPrice;
         const color = isBullish ? '#10b981' : '#ef4444'; // Success Green or Danger Red
         const bgColor = isBullish ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)';
@@ -467,10 +484,10 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             reconnectBtn.disabled = true;
             reconnectBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Connecting...';
-            
+
             const res = await fetch('/jobs/resubscribe', { method: 'POST' });
             const data = await res.json();
-            
+
             if (data.ok) {
                 // Poll immediately to check status
                 setTimeout(pollStatus, 1000);
@@ -489,33 +506,64 @@ document.addEventListener('DOMContentLoaded', () => {
         const { dates, matrix } = globalMatrixData;
         if (!matrix || matrix.length === 0) return;
 
-        // Build CSV content
-        // Header: Use DD/MM/YYYY format for CSV
-        const headers = ['Symbol', ...dates.map(d => {
-            const dateObj = new Date(d);
-            if (isNaN(dateObj.getTime())) return d;
-            return dateObj.toLocaleDateString('en-GB'); // DD/MM/YYYY
-        })];
-        const csvRows = [headers.join(',')];
+        // Safe CSV cell formatter
+        const formatCSVCell = (value) => {
+            if (value === null || value === undefined || value === '-') return '';
 
-        // Rows
+            // Prevent Excel formula injection
+            const str = value.toString().replace(/"/g, '""');
+            const safeStr = ['=', '+', '-', '@'].includes(str[0]) ? `'${str}` : str;
+
+            return `"${safeStr}"`; // wrap in quotes to protect commas
+        };
+
+        // Format header dates → DD/MM/YYYY safely
+        const headers = [
+            'Symbol',
+            ...dates.map(d => {
+                const dateObj = new Date(d);
+                return !isNaN(dateObj.getTime())
+                    ? dateObj.toLocaleDateString('en-GB') // DD/MM/YYYY
+                    : d;
+            })
+        ];
+
+        const csvRows = [headers.map(formatCSVCell).join(',')];
+
+        // Build rows
         matrix.forEach(row => {
-            const rowData = [row.symbol];
+            const rowData = [];
+
+            // Symbol (safe)
+            rowData.push(formatCSVCell(row.symbol));
+
+            // Dates → fetch value and format number precision
             dates.forEach(d => {
-                rowData.push(row[d] !== '-' && row[d] !== null ? row[d] : '');
+                let value = row[d];
+
+                if (typeof value === 'number') {
+                    value = value.toFixed(2); // limit decimals
+                }
+
+                rowData.push(formatCSVCell(value));
             });
+
             csvRows.push(rowData.join(','));
         });
 
+        // Create CSV file
         const csvString = csvRows.join('\n');
         const blob = new Blob([csvString], { type: 'text/csv' });
-        const url = window.URL.createObjectURL(blob);
+        const url = URL.createObjectURL(blob);
+
         const a = document.createElement('a');
-        a.setAttribute('hidden', '');
-        a.setAttribute('href', url);
-        a.setAttribute('download', `stock_matrix_${new Date().toISOString().split('T')[0]}.csv`);
+        a.href = url;
+        a.download = `stock_matrix_${new Date().toISOString().split('T')[0]}.csv`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
+
+        URL.revokeObjectURL(url); // cleanup
     }
+
 });
