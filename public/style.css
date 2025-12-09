@@ -16,9 +16,17 @@
     --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
 
-.text-green { color: var(--success); }
-.text-red { color: var(--danger); }
-.text-neutral { color: var(--text-muted); }
+.text-green {
+    color: var(--success);
+}
+
+.text-red {
+    color: var(--danger);
+}
+
+.text-neutral {
+    color: var(--text-muted);
+}
 
 * {
     margin: 0;
@@ -34,15 +42,18 @@
     width: 8px;
     height: 8px;
 }
+
 ::-webkit-scrollbar-track {
-    background: var(--bg-main); 
+    background: var(--bg-main);
 }
+
 ::-webkit-scrollbar-thumb {
-    background: var(--border); 
+    background: var(--border);
     border-radius: 4px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
-    background: var(--text-muted); 
+    background: var(--text-muted);
 }
 
 body {
@@ -230,27 +241,34 @@ body {
     box-shadow: var(--shadow-sm);
     display: flex;
     flex-direction: column;
-    overflow: hidden; /* Contains the scrollable table */
-    flex: 1; /* Allow card to take remaining height */
-    min-height: 400px; /* Minimum height ensures usability */
+    overflow: hidden;
+    /* Contains the scrollable table */
+    flex: 1;
+    /* Allow card to take remaining height */
+    min-height: 400px;
+    /* Minimum height ensures usability */
 }
 
 /* Matrix Table */
 .table-responsive {
-    overflow: auto; /* Enable both X and Y scrolling */
+    overflow: auto;
+    /* Enable both X and Y scrolling */
     width: 100%;
     height: 100%;
-    max-height: 70vh; /* Fixed max height for vertical scrolling */
+    max-height: 70vh;
+    /* Fixed max height for vertical scrolling */
 }
 
 table {
     width: 100%;
-    border-collapse: separate; /* Required for sticky headers to work properly with borders */
+    border-collapse: separate;
+    /* Required for sticky headers to work properly with borders */
     border-spacing: 0;
     white-space: nowrap;
 }
 
-th, td {
+th,
+td {
     padding: 0.85rem 1.25rem;
     text-align: left;
     border-bottom: 1px solid var(--border);
@@ -266,14 +284,17 @@ th {
     letter-spacing: 0.05em;
     position: sticky;
     top: 0;
-    z-index: 20; /* Higher than first col */
-    box-shadow: 0 1px 0 var(--border); /* Bottom border fix for sticky */
+    z-index: 20;
+    /* Higher than first col */
+    box-shadow: 0 1px 0 var(--border);
+    /* Bottom border fix for sticky */
 }
 
 td {
     font-weight: 500;
     font-size: 0.9rem;
-    background-color: var(--bg-card); /* Ensure no transparency on scroll */
+    background-color: var(--bg-card);
+    /* Ensure no transparency on scroll */
 }
 
 /* Sticky First Column */
@@ -283,7 +304,8 @@ td:first-child {
     left: 0;
     z-index: 10;
     background-color: var(--bg-card);
-    border-right: 2px solid var(--border); /* Distinct separator */
+    border-right: 2px solid var(--border);
+    /* Distinct separator */
 }
 
 /* Header for First Column needs higher z-index */
@@ -306,6 +328,7 @@ td:first-child:hover {
 tr:hover td {
     background-color: var(--bg-hover);
 }
+
 /* Ensure sticky column also gets hover color */
 tr:hover td:first-child {
     background-color: var(--bg-hover);
@@ -381,14 +404,16 @@ tr:hover td:first-child {
     border-collapse: collapse;
 }
 
-.history-table th, .history-table td {
+.history-table th,
+.history-table td {
     border: none;
     border-bottom: 1px solid var(--border);
     padding: 0.75rem;
 }
 
 .history-table th {
-    position: static; /* No sticky inside modal usually needed, or can add if long */
+    position: static;
+    /* No sticky inside modal usually needed, or can add if long */
     background: transparent;
     box-shadow: none;
 }
@@ -427,11 +452,12 @@ tr:hover td:first-child {
         padding: 0 1rem;
         gap: 1rem;
     }
-    
+
     .logo span {
-        display: none; /* Hide text logo on small screens, keep icon */
+        display: none;
+        /* Hide text logo on small screens, keep icon */
     }
-    
+
     .logo i {
         font-size: 1.5rem;
     }
@@ -449,4 +475,94 @@ tr:hover td:first-child {
     .section-header h1 {
         font-size: 1.5rem;
     }
+}
+
+/* Toast Notifications */
+#toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 3000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.toast {
+    background: var(--bg-card);
+    color: var(--text-main);
+    padding: 12px 20px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-lg);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 250px;
+    animation: slideIn 0.3s ease-out forwards;
+}
+
+.toast.success {
+    border-left: 4px solid var(--success);
+}
+
+.toast.error {
+    border-left: 4px solid var(--danger);
+}
+
+.toast i {
+    font-size: 1.1rem;
+}
+
+.toast.success i {
+    color: var(--success);
+}
+
+.toast.error i {
+    color: var(--danger);
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes fadeOut {
+    to {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+}
+
+/* UI Polish */
+.text-accent-orange {
+    color: #d97706;
+    /* Dark Orange */
+}
+
+.clear-btn {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: color 0.2s;
+    z-index: 10;
+}
+
+.clear-btn:hover {
+    color: var(--text-main);
+}
+
+.clear-btn.hidden {
+    display: none;
 }

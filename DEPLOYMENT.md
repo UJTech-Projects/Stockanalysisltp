@@ -1,4 +1,4 @@
-# Deployment Guide for StockTrackerUJ
+# Deployment Guide for StockEyeUJ
 
 This guide covers deploying the backend to **Render.com** and setting up **GitHub Actions** for cron jobs and health checks.
 
@@ -58,7 +58,7 @@ The repo includes workflows to keep your app alive and run scheduled jobs.
     - **Resubscribe**: Daily at 03:15 UTC (08:45 IST).
 
 ## 5. Verification
-1.  Open your App URL. You should see the StockTrackerUJ dashboard.
+1.  Open your App URL. You should see the StockEyeUJ dashboard.
 2.  The "Status" dot in the top bar should eventually turn **Green** (Connected).
 3.  You can manually trigger jobs via `curl` to test:
     ```bash

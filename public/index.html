@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>StockTrackerUJ</title>
+    <title>StockEyeUJ</title>
     <!-- Premium Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -12,9 +13,10 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
+
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
     <div class="app-container">
         <!-- Main Content -->
@@ -22,7 +24,7 @@
             <header class="top-bar">
                 <div class="logo">
                     <i class="fa-solid fa-chart-line"></i>
-                    <span>StockTrackerUJ</span>
+                    <span>StockEye<span class="text-accent-orange">UJ</span></span>
                 </div>
                 <div class="search-container">
                     <div class="search-input-wrapper">
@@ -32,15 +34,19 @@
                     </div>
                 </div>
                 <!-- Status Indicator -->
-                <div class="status-container" style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; font-weight: 500;">
-                    <span id="statusDot" style="width: 8px; height: 8px; border-radius: 50%; background-color: var(--text-muted); display: inline-block;"></span>
+                <div class="status-container"
+                    style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; font-weight: 500;">
+                    <span id="statusDot"
+                        style="width: 8px; height: 8px; border-radius: 50%; background-color: var(--text-muted); display: inline-block;"></span>
                     <span id="statusText" style="color: var(--text-muted);">Connecting...</span>
-                    <button id="reconnectBtn" class="btn hidden" style="font-size: 0.75rem; padding: 0.3rem 0.6rem; margin-left: 0.5rem; background: var(--bg-hover); color: var(--text-main); border: 1px solid var(--border);">
+                    <button id="reconnectBtn" class="btn hidden"
+                        style="font-size: 0.75rem; padding: 0.3rem 0.6rem; margin-left: 0.5rem; background: var(--bg-hover); color: var(--text-main); border: 1px solid var(--border);">
                         <i class="fa-solid fa-plug"></i> Connect
                     </button>
                 </div>
                 <div class="actions">
-                    <button id="refreshBtn" class="btn-icon" title="Refresh Data"><i class="fa-solid fa-rotate-right"></i></button>
+                    <button id="refreshBtn" class="btn-icon" title="Refresh Data"><i
+                            class="fa-solid fa-rotate-right"></i></button>
                 </div>
             </header>
 
@@ -51,19 +57,27 @@
                 </div>
 
                 <!-- Toolbar: Filters -->
-                <div class="toolbar" style="margin-bottom: 1rem; display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; justify-content: space-between;">
+                <div class="toolbar"
+                    style="margin-bottom: 1rem; display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; justify-content: space-between;">
                     <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;">
                         <div class="search-input-wrapper" style="width: auto; min-width: 200px;">
                             <i class="fa-solid fa-filter"></i>
                             <input type="number" id="minPriceInput" placeholder="Min LTP (>=)" autocomplete="off">
+                            <i class="fa-solid fa-xmark clear-btn hidden" id="clearMinPrice"></i>
+                        </div>
+                        <div class="search-input-wrapper" style="width: auto; min-width: 200px;">
+                            <i class="fa-solid fa-font"></i>
+                            <input type="text" id="nameFilterInput" placeholder="Filter by Name..." autocomplete="off">
+                            <i class="fa-solid fa-xmark clear-btn hidden" id="clearNameFilter"></i>
                         </div>
                         <div style="display: flex; align-items: center; color: var(--text-muted); font-size: 0.9rem;">
                             <i class="fa-solid fa-info-circle" style="margin-right: 0.5rem;"></i>
                             <span>Click headers to sort</span>
                         </div>
                     </div>
-                    
-                    <button id="exportBtn" class="btn" style="background: var(--bg-hover); color: var(--text-main); border: 1px solid var(--border); display: flex; align-items: center; gap: 0.5rem;">
+
+                    <button id="exportBtn" class="btn"
+                        style="background: var(--bg-hover); color: var(--text-main); border: 1px solid var(--border); display: flex; align-items: center; gap: 0.5rem;">
                         <i class="fa-solid fa-file-csv"></i> Export CSV
                     </button>
                 </div>
@@ -84,6 +98,15 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Footer -->
+            <footer
+                style="margin-top: 2rem; padding: 1rem; text-align: center; color: var(--text-muted); font-size: 0.9rem; border-top: 1px solid var(--border);">
+                <p>Made by <a href="https://ujjwalit.co.in" target="_blank"
+                        style="color: var(--primary); text-decoration: none; font-weight: 700;">Ujjwalit</a> &copy;
+                    <span id="copyrightYear"></span>
+                </p>
+            </footer>
         </main>
     </div>
 
@@ -95,7 +118,8 @@
                 <button class="close-btn" id="closeModal"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div class="modal-body">
-                <div class="chart-container" style="position: relative; height: 250px; width: 100%; margin-bottom: 1.5rem;">
+                <div class="chart-container"
+                    style="position: relative; height: 250px; width: 100%; margin-bottom: 1.5rem;">
                     <canvas id="stockChart"></canvas>
                 </div>
                 <table class="history-table">
@@ -114,6 +138,10 @@
         </div>
     </div>
 
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
     <script src="app.js"></script>
 </body>
+
 </html>

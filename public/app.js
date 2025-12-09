@@ -5,6 +5,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const matrixHeaderRow = document.getElementById('matrixHeaderRow');
     const matrixBody = document.getElementById('matrixBody');
     const minPriceInput = document.getElementById('minPriceInput');
+    const clearMinPrice = document.getElementById('clearMinPrice');
+    const nameFilterInput = document.getElementById('nameFilterInput');
+    const clearNameFilter = document.getElementById('clearNameFilter');
     const exportBtn = document.getElementById('exportBtn');
 
     // Status Elements
@@ -21,11 +24,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let currentSymbol = null; // Track which symbol is open in modal
     let chartInstance = null; // Chart.js instance for the modal
-    
+
     // State for Data, Sorting, and Filtering
     let globalMatrixData = { dates: [], matrix: [] };
     let sortConfig = { column: 'symbol', direction: 'asc' }; // column: 'symbol' or date string
     let minPriceFilter = null;
+    let nameFilter = '';
 
     // Initial Load
     fetchMatrix();
@@ -34,36 +38,83 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Event Listeners
     refreshBtn.addEventListener('click', fetchMatrix);
-    
+
     // Reconnect Listener
     if (reconnectBtn) {
         reconnectBtn.addEventListener('click', handleReconnect);
     }
-    
+
     // Export Listener
     if (exportBtn) {
         exportBtn.addEventListener('click', exportToCSV);
     }
 
     symbolInput.addEventListener('input', debounce(handleSearch, 300));
-    
+
     // Filter Input Listener
     minPriceInput.addEventListener('input', (e) => {
         const val = e.target.value.trim();
         minPriceFilter = val ? parseFloat(val) : null;
-        renderMatrix(); // Re-render with new filter
+        toggleClearBtn(clearMinPrice, val);
+        renderMatrix();
     });
-    
-    // Search Bar Behavior: Open on focus, don't close on click outside
+
+    if (clearMinPrice) {
+        clearMinPrice.addEventListener('click', () => {
+            minPriceInput.value = '';
+            minPriceFilter = null;
+            toggleClearBtn(clearMinPrice, '');
+            renderMatrix();
+        });
+    }
+
+    // Search Bar Behavior: show results only when meaningful; don't forcibly show placeholder on focus
     symbolInput.addEventListener('focus', () => {
-        searchResults.classList.remove('hidden');
-        if (symbolInput.value.trim().length < 2 && searchResults.children.length === 0) {
-             searchResults.innerHTML = '<div class="search-result-item" style="cursor:default; justify-content:center;">Type to search...</div>';
+        const val = symbolInput.value.trim();
+        if (val.length >= 2 && searchResults.children.length > 0) {
+            searchResults.classList.remove('hidden');
         }
     });
 
-    // Removed the "click outside" listener as requested.
-    // document.addEventListener('click', (e) => { ... });
+    // Filter Name Listener
+    if (nameFilterInput) {
+        nameFilterInput.addEventListener('input', (e) => {
+            nameFilter = e.target.value.trim().toLowerCase();
+            toggleClearBtn(clearNameFilter, nameFilter);
+            renderMatrix();
+        });
+
+        if (clearNameFilter) {
+            clearNameFilter.addEventListener('click', () => {
+                nameFilterInput.value = '';
+                nameFilter = '';
+                toggleClearBtn(clearNameFilter, '');
+                renderMatrix();
+            });
+        }
+    }
+
+    // Click / pointer outside to close search dropdown reliably
+    // Use pointerdown so it fires before focus changes and other click handlers
+    document.addEventListener('pointerdown', (e) => {
+        const searchWrapper = symbolInput.closest('.search-input-wrapper');
+        // Use composedPath for robust detection (works with Shadow DOM and some browsers)
+        const path = (typeof e.composedPath === 'function') ? e.composedPath() : (e.path || []);
+
+        const clickedInside = (searchWrapper && path.includes(searchWrapper)) || path.includes(searchResults) || (searchWrapper && searchWrapper.contains(e.target));
+
+        if (!clickedInside) {
+            hideSearchResults();
+        }
+    });
+
+    // Close search on Escape
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            searchResults.classList.add('hidden');
+            symbolInput.blur();
+        }
+    });
 
     closeModal.addEventListener('click', () => {
         historyModal.classList.add('hidden');
@@ -80,10 +131,10 @@ document.addEventListener('DOMContentLoaded', () => {
             refreshBtn.querySelector('i').classList.add('fa-spin');
             const res = await fetch('/api/watchlist/matrix');
             const data = await res.json();
-            
+
             // Store global data
             globalMatrixData = data;
-            
+
             renderMatrix();
         } catch (err) {
             console.error('Failed to fetch matrix:', err);
@@ -96,19 +147,36 @@ document.addEventListener('DOMContentLoaded', () => {
         const { dates, matrix } = globalMatrixData;
         if (!dates) return;
 
+        // Filter out Weekends (Sat=6, Sun=0)
+        const businessDates = dates.filter(d => {
+            const day = new Date(d).getDay();
+            return day !== 0 && day !== 6;
+        });
+
         // 1. Filter Data
+
         let displayData = [...matrix];
         if (minPriceFilter !== null && !isNaN(minPriceFilter)) {
             // Filter based on the LATEST date (first date in dates array usually, or logic below)
             // Dates are typically returned sorted DESC (newest first) by the API.
             // Let's verify: app.js logic assumes dates[0] is newest? 
             // API: "dates" array from "SELECT DISTINCT date ... ORDER BY date DESC" -> Yes, dates[0] is newest.
-            const newestDate = dates[0];
-            
+            // Filter based on the LATEST date (first date in dates array usually, or logic below)
+            // Dates are typically returned sorted DESC (newest first) by the API.
+            // Let's verify: app.js logic assumes dates[0] is newest? 
+            // API: "dates" array from "SELECT DISTINCT date ... ORDER BY date DESC" -> Yes, dates[0] is newest.
+            const newestDate = businessDates[0];
+
             displayData = displayData.filter(row => {
                 const val = row[newestDate];
                 if (val === '-' || val === null) return false;
                 return parseFloat(val) >= minPriceFilter;
+            });
+        }
+
+        if (nameFilter) {
+            displayData = displayData.filter(row => {
+                return row.symbol.toLowerCase().includes(nameFilter);
             });
         }
 
@@ -123,7 +191,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Sort by price on specific date
                 valA = a[sortConfig.column];
                 valB = b[sortConfig.column];
-                
+
                 // Handle '-' or missing
                 valA = (valA === '-' || valA === null) ? -Infinity : parseFloat(valA);
                 valB = (valB === '-' || valB === null) ? -Infinity : parseFloat(valB);
@@ -147,7 +215,7 @@ document.addEventListener('DOMContentLoaded', () => {
         matrixHeaderRow.appendChild(symbolTh);
 
         // Date Headers
-        dates.forEach(date => {
+        businessDates.forEach(date => {
             const th = document.createElement('th');
             th.textContent = formatDate(date);
             th.style.cursor = 'pointer';
@@ -155,6 +223,13 @@ document.addEventListener('DOMContentLoaded', () => {
             th.addEventListener('click', () => handleSortClick(date));
             matrixHeaderRow.appendChild(th);
         });
+
+        // Set CSV Tooltip
+        if (businessDates.length > 0) {
+            const start = formatDate(businessDates[businessDates.length - 1]);
+            const end = formatDate(businessDates[0]);
+            exportBtn.title = `Export data from ${start} to ${end}`;
+        }
 
         // 4. Render Body
         matrixBody.innerHTML = '';
@@ -169,10 +244,11 @@ document.addEventListener('DOMContentLoaded', () => {
             tr.appendChild(symbolTd);
 
             // Data Cells
-            dates.forEach((date, index) => {
+            businessDates.forEach((date, index) => {
                 const td = document.createElement('td');
                 const val = row[date];
-                td.textContent = val !== '-' ? `₹${val}` : '-';
+                // Fix: 2 decimals, no rupee symbol
+                td.textContent = (val !== '-' && val !== null) ? parseFloat(val).toFixed(2) : '-';
 
                 // Color Logic
                 if (val !== '-') {
@@ -183,7 +259,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         td.classList.add('text-neutral');
                     } else {
                         // Compare with previous day (next index in dates array since dates are DESC)
-                        const prevDate = dates[index + 1];
+                        const prevDate = businessDates[index + 1];
                         const prevVal = prevDate ? row[prevDate] : null;
 
                         if (prevVal && prevVal !== '-') {
@@ -226,8 +302,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function handleSearch(e) {
         const query = e.target.value.trim();
-        
-        // Modified behavior: Don't hide if short, just show placeholder
+
+        // If no query, hide results entirely (user cleared input)
+        if (query.length === 0) {
+            hideSearchResults();
+            return;
+        }
+
+        // If query is short but non-empty, show gentle placeholder
         if (query.length < 2) {
             searchResults.innerHTML = '<div class="search-result-item" style="cursor:default; justify-content:center;">Type to search...</div>';
             searchResults.classList.remove('hidden');
@@ -280,12 +362,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (resp.ok) {
                 // Refresh matrix
                 fetchMatrix();
+                showToast(`Stock ${item.symbol} added successfully`, 'success');
             } else {
-                alert('Failed to add stock: ' + resp.error);
+                showToast('Failed to add stock: ' + resp.error, 'error');
             }
         } catch (err) {
             console.error('Add stock failed:', err);
-            alert('Error adding stock');
+            showToast('Error adding stock', 'error');
         }
     }
 
@@ -322,7 +405,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td>${formatDate(row.date)}</td>
-                <td>₹${row.ltp}</td>
+                <td>${parseFloat(row.ltp).toFixed(2)}</td>
             `;
             historyBody.appendChild(tr);
         });
@@ -333,7 +416,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderStockChart(history, symbol) {
         const ctx = document.getElementById('stockChart').getContext('2d');
-        
+
         // History is DESC (Newest first). We need Oldest first for chart.
         // We also limit to last 30 points if the API returns more, though API limits to 10 currently.
         // Let's rely on what we have.
@@ -346,7 +429,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Newest is the last item in reversedHistory (or first in original history)
         const newestPrice = dataPoints[dataPoints.length - 1];
         const oldestPrice = dataPoints[0];
-        
+
         const isBullish = newestPrice >= oldestPrice;
         const color = isBullish ? '#10b981' : '#ef4444'; // Success Green or Danger Red
         const bgColor = isBullish ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)';
@@ -376,7 +459,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         mode: 'index',
                         intersect: false,
                         callbacks: {
-                            label: (context) => `Price: ₹${context.raw}`
+                            label: (context) => `Price: ${parseFloat(context.raw).toFixed(2)}`
                         }
                     }
                 },
@@ -408,15 +491,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 historyModal.classList.add('hidden');
                 currentSymbol = null;
                 fetchMatrix(); // Refresh dashboard
+                showToast('Stock removed from watchlist', 'success');
             } else {
-                alert('Failed to delete stock');
+                showToast('Failed to delete stock', 'error');
             }
         } catch (err) {
             console.error('Delete failed:', err);
+            showToast('Error deleting stock', 'error');
         }
     }
 
     // Utilities
+    function hideSearchResults() {
+        if (searchResults) {
+            searchResults.classList.add('hidden');
+            // clear content so the placeholder doesn't stick around
+            searchResults.innerHTML = '';
+        }
+    }
     function debounce(func, wait) {
         let timeout;
         return function executedFunction(...args) {
@@ -467,18 +559,19 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             reconnectBtn.disabled = true;
             reconnectBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Connecting...';
-            
+
             const res = await fetch('/jobs/resubscribe', { method: 'POST' });
             const data = await res.json();
-            
+
             if (data.ok) {
                 // Poll immediately to check status
                 setTimeout(pollStatus, 1000);
+                showToast('Reconnection initiated', 'success');
             } else {
-                alert('Connection failed: ' + (data.error || 'Unknown error'));
+                showToast('Connection failed: ' + (data.error || 'Unknown error'), 'error');
             }
         } catch (err) {
-            alert('Connection failed: ' + err.message);
+            showToast('Connection failed: ' + err.message, 'error');
         } finally {
             reconnectBtn.disabled = false;
             reconnectBtn.innerHTML = '<i class="fa-solid fa-plug"></i> Connect';
@@ -517,5 +610,45 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
+    }
+
+    // Set Copyright Year
+    const yearSpan = document.getElementById('copyrightYear');
+    if (yearSpan) {
+        yearSpan.textContent = new Date().getFullYear();
+    }
+
+    // Toast Notification System
+    function showToast(message, type = 'success') {
+        const container = document.getElementById('toast-container');
+        if (!container) return;
+
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+
+        const iconClass = type === 'success' ? 'fa-circle-check' : 'fa-circle-xmark';
+
+        toast.innerHTML = `
+            <i class="fa-solid ${iconClass}"></i>
+            <span>${message}</span>
+        `;
+
+        container.appendChild(toast);
+
+        // Remove after 3 seconds
+        setTimeout(() => {
+            toast.style.animation = 'fadeOut 0.3s ease-out forwards';
+            toast.addEventListener('animationend', () => {
+                toast.remove();
+            });
+        }, 3000);
+    }
+    function toggleClearBtn(btn, val) {
+        if (!btn) return;
+        if (val && val.length > 0) {
+            btn.classList.remove('hidden');
+        } else {
+            btn.classList.add('hidden');
+        }
     }
 });
